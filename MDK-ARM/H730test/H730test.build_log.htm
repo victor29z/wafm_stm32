@@ -1,0 +1,74 @@
+<html>
+<body>
+<pre>
+<h1>µVision Build Log</h1>
+<h2>Tool Versions:</h2>
+IDE-Version: ¦ÌVision V5.27.1.0
+Copyright (C) 2019 ARM Ltd and ARM Germany GmbH. All rights reserved.
+License Information: liang zhao, aaa, LIC=03C6R-K9IT1-EV21R-KRUWM-PX1R0-VQUNB
+ 
+Tool Versions:
+Toolchain:       MDK-ARM Plus  Version: 5.27.1.0
+Toolchain Path:  C:\Keil_v5\ARM\ARMCLANG\Bin
+C Compiler:      ArmClang.exe V6.12
+Assembler:       Armasm.exe V6.12
+Linker/Locator:  ArmLink.exe V6.12
+Library Manager: ArmAr.exe V6.12
+Hex Converter:   FromElf.exe V6.12
+CPU DLL:         SARMCM3.DLL V5.27.1.0
+Dialog DLL:      DCM.DLL V1.17.2.0
+Target DLL:      Segger\JL2CM3.dll V2.99.35.0
+Dialog DLL:      TCM.DLL V1.36.1.0
+ 
+<h2>Project:</h2>
+E:\stm32proj\H730test\MDK-ARM\H730test.uvprojx
+Project File Date:  04/13/2026
+
+<h2>Output:</h2>
+*** Using Compiler 'V6.12', folder: 'C:\Keil_v5\ARM\ARMCLANG\Bin'
+Build target 'H730test'
+../Core/Src/main.c(149): warning: implicitly declaring library function 'sprintf' with type 'int (char *, const char *, ...)' [-Wimplicit-function-declaration]
+        int tx_len = sprintf(tx_buffer, "ADC Code: %lu (0x%lX), Voltage: %.3f V\r\n", adc_val, adc_val, voltage);
+                     ^
+../Core/Src/main.c(149): note: include the header <stdio.h> or explicitly provide a declaration for 'sprintf'
+../Core/Src/main.c(149): warning: format specifies type 'unsigned long' but the argument has type 'uint32_t' (aka 'unsigned int') [-Wformat]
+        int tx_len = sprintf(tx_buffer, "ADC Code: %lu (0x%lX), Voltage: %.3f V\r\n", adc_val, adc_val, voltage);
+                                                   ~~~                                ^~~~~~~
+                                                   %u
+../Core/Src/main.c(149): warning: format specifies type 'unsigned long' but the argument has type 'uint32_t' (aka 'unsigned int') [-Wformat]
+        int tx_len = sprintf(tx_buffer, "ADC Code: %lu (0x%lX), Voltage: %.3f V\r\n", adc_val, adc_val, voltage);
+                                                          ~~~                                  ^~~~~~~
+                                                          %X
+3 warnings generated.
+compiling main.c...
+linking...
+Program Size: Code=19432 RO-data=804 RW-data=16 ZI-data=1448  
+FromELF: creating hex file...
+"H730test\H730test.axf" - 0 Error(s), 3 Warning(s).
+
+<h2>Software Packages used:</h2>
+
+Package Vendor: ARM
+                http://www.keil.com/pack/ARM.CMSIS.5.9.0.pack
+                ARM.CMSIS.5.9.0
+                CMSIS (Common Microcontroller Software Interface Standard)
+   * Component: CORE Version: 5.6.0
+
+Package Vendor: Keil
+                https://www.keil.com/pack/Keil.STM32H7xx_DFP.3.1.1.pack
+                Keil.STM32H7xx_DFP.3.1.1
+                STMicroelectronics STM32H7 Series Device Support and Examples
+
+<h2>Collection of Component include folders:</h2>
+  .\RTE\_H730test
+  C:\Users\victo\AppData\Local\Arm\Packs\ARM\CMSIS\5.9.0\CMSIS\Core\Include
+  C:\Users\victo\AppData\Local\Arm\Packs\Keil\STM32H7xx_DFP\3.1.1\Drivers\CMSIS\Device\ST\STM32H7xx\Include
+
+<h2>Collection of Component Files used:</h2>
+
+   * Component: ARM::CMSIS:CORE:5.6.0
+      Include file:  CMSIS\Core\Include\tz_context.h
+Build Time Elapsed:  00:00:02
+</pre>
+</body>
+</html>
