@@ -22,29 +22,12 @@ Dialog DLL:      TCM.DLL V1.36.1.0
  
 <h2>Project:</h2>
 E:\stm32proj\H730test\MDK-ARM\H730test.uvprojx
-Project File Date:  04/13/2026
+Project File Date:  04/20/2026
 
 <h2>Output:</h2>
 *** Using Compiler 'V6.12', folder: 'C:\Keil_v5\ARM\ARMCLANG\Bin'
 Build target 'H730test'
-../Core/Src/main.c(149): warning: implicitly declaring library function 'sprintf' with type 'int (char *, const char *, ...)' [-Wimplicit-function-declaration]
-        int tx_len = sprintf(tx_buffer, "ADC Code: %lu (0x%lX), Voltage: %.3f V\r\n", adc_val, adc_val, voltage);
-                     ^
-../Core/Src/main.c(149): note: include the header <stdio.h> or explicitly provide a declaration for 'sprintf'
-../Core/Src/main.c(149): warning: format specifies type 'unsigned long' but the argument has type 'uint32_t' (aka 'unsigned int') [-Wformat]
-        int tx_len = sprintf(tx_buffer, "ADC Code: %lu (0x%lX), Voltage: %.3f V\r\n", adc_val, adc_val, voltage);
-                                                   ~~~                                ^~~~~~~
-                                                   %u
-../Core/Src/main.c(149): warning: format specifies type 'unsigned long' but the argument has type 'uint32_t' (aka 'unsigned int') [-Wformat]
-        int tx_len = sprintf(tx_buffer, "ADC Code: %lu (0x%lX), Voltage: %.3f V\r\n", adc_val, adc_val, voltage);
-                                                          ~~~                                  ^~~~~~~
-                                                          %X
-3 warnings generated.
-compiling main.c...
-linking...
-Program Size: Code=19432 RO-data=804 RW-data=16 ZI-data=1448  
-FromELF: creating hex file...
-"H730test\H730test.axf" - 0 Error(s), 3 Warning(s).
+"H730test\H730test.axf" - 0 Error(s), 0 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -68,7 +51,7 @@ Package Vendor: Keil
 
    * Component: ARM::CMSIS:CORE:5.6.0
       Include file:  CMSIS\Core\Include\tz_context.h
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:01
 </pre>
 </body>
 </html>

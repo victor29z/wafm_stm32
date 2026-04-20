@@ -59,7 +59,7 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 
 /* USER CODE BEGIN Private defines */
-
+#define ADC_BUFFER_SIZE 2000
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
