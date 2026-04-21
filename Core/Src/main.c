@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,6 +39,14 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define MAX_XSIZE 10000
+#define MAX_YSIZE 10000
+#define XPOINTS_PER_LINE 2500
+#define YPOINTS_PER_LINE 1000
+
+#define POINTS_V 5000
+#define DAC_X_MSB 4096  // DAC输出的最大�?�，12-bit分辨率为4095，但为了方便计算和留有余量，使用4096
+#define DAC_Y_MSB 4096  // 同上，DAC输出的最大�??
 
 /* USER CODE END PM */
 
@@ -46,10 +55,14 @@ ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
 DAC_HandleTypeDef hdac1;
+DMA_HandleTypeDef hdma_dac1_ch1;
+DMA_HandleTypeDef hdma_dac1_ch2;
 
 SPI_HandleTypeDef hspi5;
 
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
 
@@ -61,6 +74,31 @@ volatile uint8_t dma_transfer_complete_flag = 0;
 volatile uint8_t dma_transfer_half_complete_flag = 0;
 
 
+// AFM Scan parameters
+static uint16_t scan_x_size = 10000; // integer in nm, 10 um
+static uint16_t scan_y_size = 10000; // integer in nm, 10 um
+static uint16_t scan_x_offset = 0; // integer in nm
+static uint16_t scan_y_offset = 0; // integer in nm
+static uint16_t scan_rate = 1; // in Hz
+static uint16_t scan_samples = 250;
+static uint16_t scan_lines = 250;
+static bool scanning = false;
+static bool scan_direction_upward = false; // true: upward (from max to 0), false: downward (from 0 to max)
+static uint16_t current_scan_line = 0;
+static bool frame_completed = false;
+static bool half_line_completed = false;
+
+static bool scan_x_tr = false; // true: x scanning in retrace direction, false: x scanning in trace direction
+
+// scanning control varibles
+static float scan_x_inc = 0.0f; 
+static float scan_y_inc = 0.0f; 
+
+uint16_t scan_y_index = 0; // 当前扫描行的索引
+ALIGN_32BYTES (uint16_t x_dac_buffer_t[XPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
+ALIGN_32BYTES (uint16_t x_dac_buffer_r[XPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
+// ALIGN_32BYTES (uint16_t y_dac_buffer[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
+// ALIGN_32BYTES (uint16_t y_dac_buffer_nl[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));  // nl: next line
 
 
 /* USER CODE END PV */
@@ -76,7 +114,11 @@ static void MX_TIM3_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_DAC1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
+
+static void Scan_Init(void);
 
 /* USER CODE END PFP */
 
@@ -134,6 +176,8 @@ int main(void)
   MX_USART1_UART_Init();
   MX_ADC1_Init();
   MX_DAC1_Init();
+  MX_TIM2_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   
   /* Start DAC channels */
@@ -142,8 +186,8 @@ int main(void)
   
   /* Set DAC output values: 1/3 and 2/3 of full scale (4095) */
   /* DAC resolution is 12-bit, so full scale = 4095 */
-  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 1365);  /* 4095 * 1/3 = 1365 */
-  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 2730);  /* 4095 * 2/3 = 2730 */
+  // HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 1365);  /* 4095 * 1/3 = 1365 */
+  // HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, 2730);  /* 4095 * 2/3 = 2730 */
   
   /* Perform ADC calibration before starting */
   if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_CALIB_OFFSET, ADC_SINGLE_ENDED) != HAL_OK)
@@ -159,14 +203,24 @@ int main(void)
     Error_Handler();
   }
 
+    /* Start TIM2 to trigger DAC1 conversions */
+  if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
     /* Start ADC1 with DMA first (to enable ADC) */
   if (HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_BUFFER_SIZE) != HAL_OK)
   {
     Error_Handler();
   }
   
+  /* Initialize scanning parameters */
+  Scan_Init();
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_t , XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+  
   /* Debug: Send startup message */
-  printf("STM32H730 ADC DMA Example Started\r\n");
+  printf("STM32H730 AFM Scan Control Started\r\n");
 
 
 
@@ -192,7 +246,7 @@ int main(void)
       for(int i=0; i<1000; i++) sum += adc_buffer[i + 1000];
 
       
-      // 计算平均�????? �????? 转换成电压（12位ADC�?????3.3V参�?�）
+      // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
       uint16_t adc_avg = sum / 1000;
       //voltage = (adc_avg * 3.3f) / 4095.0f;
       voltage = ((adc_buffer[1000]) * 3.3f) / 4095.0f;
@@ -216,7 +270,7 @@ int main(void)
       for(int i=0; i<1000; i++) sum += adc_buffer[i];
 
       
-      // 计算平均�????? �????? 转换成电压（12位ADC�?????3.3V参�?�）
+      // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
       uint16_t adc_avg = sum / 1000;
       //voltage = (adc_avg * 3.3f) / 4095.0f;
       voltage = ((adc_buffer[0]) * 3.3f) / 4095.0f;
@@ -227,6 +281,55 @@ int main(void)
       dma_transfer_half_complete_flag = 0; // 重置标志
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET); // 熄灭 LED
     }
+
+
+    // if(half_line_completed){
+    //   // 处理半行扫描完成的情况，例如更新 DAC 输出以准备下一行扫描
+    //   if(scan_direction_upward){
+    //     // 如果当前扫描方向是向上（从最大到0），则更新 DAC 输出为下一行的值
+    //     if(current_scan_line > 0)  // 如果不是第一行，预先计算上一行的Y DAC值
+    //     {
+    //       uint16_t i;
+    //       for(i=0;i<YPOINTS_PER_LINE;i++)
+    //       {
+    //         y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line - 1) + i) * scan_y_inc);
+    //       }
+    //     }
+    //     else
+    //     {
+    //       // 如果是第一行，预先计算第二行的Y DAC值（往复循环扫描）
+    //       uint16_t i;
+    //       for(i=0;i<YPOINTS_PER_LINE;i++)
+    //       {
+    //         y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
+    //       }
+    //     }
+        
+    //   }
+    //   else{
+    //     // 如果当前扫描方向是向下（从0到最大），则更新 DAC 输出为下一行的值
+    //     if(current_scan_line < (scan_lines - 1))  // 如果不是最后一行，预先计算下一行的Y DAC值
+    //     {
+    //       uint16_t i;
+    //       for(i=0;i<YPOINTS_PER_LINE;i++)
+    //       {
+    //         y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
+    //       }
+    //     }
+    //     else
+    //     {
+    //         // 如果是最后一行，预先计算倒数第二行的Y DAC值（往复循环扫描）
+    //         uint16_t i;
+    //         for(i=0;i<YPOINTS_PER_LINE;i++)
+    //         {
+    //           y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 0) + i) * scan_y_inc);
+    //         }
+    //     }
+        
+        
+    //   }
+    //   half_line_completed = false;
+    // }
     /* ADC conversions are handled by TIM3 trigger and DMA interrupt */
     /* No need for polling in main loop */
     
@@ -333,7 +436,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;
   hadc1.Init.OversamplingMode = ENABLE;
   hadc1.Init.Oversampling.Ratio = 16;
-  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_4;
+  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_5;
   hadc1.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
   hadc1.Init.Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -397,7 +500,7 @@ static void MX_DAC1_Init(void)
   /** DAC channel OUT1 config
   */
   sConfig.DAC_SampleAndHold = DAC_SAMPLEANDHOLD_DISABLE;
-  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
+  sConfig.DAC_Trigger = DAC_TRIGGER_T2_TRGO;
   sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
   sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_DISABLE;
   sConfig.DAC_UserTrimming = DAC_TRIMMING_FACTORY;
@@ -408,6 +511,7 @@ static void MX_DAC1_Init(void)
 
   /** DAC channel OUT2 config
   */
+  sConfig.DAC_Trigger = DAC_TRIGGER_T4_TRGO;
   if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -467,6 +571,51 @@ static void MX_SPI5_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 274;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 199;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -508,6 +657,51 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 274;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 999;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
 
 }
 
@@ -572,6 +766,12 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DMA1_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
 
 }
 
@@ -621,8 +821,8 @@ static void MX_GPIO_Init(void)
 
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc)
 {
-  // 半传输完成回调：切换到另�????个缓冲区
-  dma_transfer_half_complete_flag = 1; // 设置半传输完成标�????
+  // 半传输完成回调：切换到另�??????个缓冲区
+  dma_transfer_half_complete_flag = 1; // 设置半传输完成标�??????
 
 }
 
@@ -638,6 +838,78 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, 2000);
 
+
+}
+
+
+
+void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
+{
+  // DAC1通道1转换完成回调
+  // 可以在这里更新DAC输出值以实现连续扫描
+  // 例如，更新x_dac_buffer中的下一个�??
+  // 注意：确保更新�?�度与扫描�?�率匹配，避免过快或过慢
+
+  if(scan_x_tr == false){
+    // 如果当前是扫描方向（trace），则下一次更新为回扫方向（retrace）的DAC值
+    scan_x_tr = true;
+    HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_r, XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+    half_line_completed = true;
+  }
+  else{
+    // retrace finished, prepare for next trace
+    scan_x_tr = false;
+    HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_t , XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+    // 更新扫描行索引
+    if(scan_direction_upward){
+      // 如果当前扫描方向是向上（从最大到0），则索引递减
+      if(current_scan_line > 0) current_scan_line--;
+      else{
+        // 已经扫描到最上面一行，切换扫描方向
+        scan_direction_upward = false;
+      }
+
+    }
+    else{
+      // 如果当前扫描方向是向下（从0到最大），则索引递增
+      if(current_scan_line < (scan_lines - 1)) current_scan_line++;
+      else{
+        // 已经扫描到最下面一行，切换扫描方向
+        scan_direction_upward = true;
+      }
+    }
+
+  }
+  
+  
+  
+}
+
+void HAL_DAC_ConvCpltCallbackCh2(DAC_HandleTypeDef *hdac)
+{
+  //HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer_nl , YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+
+
+}
+
+void Scan_Init(void){
+  uint16_t i;
+
+  scan_x_inc = (float)scan_x_size * DAC_X_MSB / MAX_XSIZE / XPOINTS_PER_LINE; // X增量
+  scan_y_inc = (float)scan_y_size * DAC_Y_MSB / MAX_YSIZE / (YPOINTS_PER_LINE * scan_lines); // Y增量
+
+  for(i=0; i<XPOINTS_PER_LINE; i++){
+    x_dac_buffer_t[i] = (uint16_t)(scan_x_offset * DAC_X_MSB / MAX_XSIZE + i * scan_x_inc);
+    x_dac_buffer_r[i] = (uint16_t)(scan_x_offset * DAC_X_MSB / MAX_XSIZE + (XPOINTS_PER_LINE - 1 - i) * scan_x_inc);
+  }
+
+
+  // fill buffer of first line of Y scanning, the rest will be updated in the DAC callback
+  // for(i=0; i<YPOINTS_PER_LINE; i++){
+  //   y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + i * scan_y_inc);
+  //   if(current_scan_line < scan_lines - 1)  // 如果不是最后一行，预先计算下一行的Y DAC值
+  //     y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
+  // }
 
 }
 /* USER CODE END 4 */
