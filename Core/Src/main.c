@@ -120,6 +120,9 @@ static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 static void Scan_Init(void);
+static void Launch_Scan(void);
+static void Stop_Scan(void);
+
 
 /* USER CODE END PFP */
 
@@ -221,10 +224,7 @@ int main(void)
   
   /* Initialize scanning parameters */
   Scan_Init();
-  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_t , XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
-  /* Start line sampling right after DAC is started */
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_BUFFER_SIZE);
-  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer ,  YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+
 
 
   /* Debug: Send startup message */
@@ -254,7 +254,7 @@ int main(void)
     //   for(int i=0; i<1000; i++) sum += adc_buffer[i + 1000];
 
       
-    //   // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
+    //   // 计算平均�????????? �????????? 转换成电压（12位ADC�?????????3.3V参�?�）
     //   uint16_t adc_avg = sum / 1000;
     //   //voltage = (adc_avg * 3.3f) / 4095.0f;
     //   voltage = ((adc_buffer[1000]) * 3.3f) / 4095.0f;
@@ -278,7 +278,7 @@ int main(void)
     //   for(int i=0; i<1000; i++) sum += adc_buffer[i];
 
       
-    //   // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
+    //   // 计算平均�????????? �????????? 转换成电压（12位ADC�?????????3.3V参�?�）
     //   uint16_t adc_avg = sum / 1000;
     //   //voltage = (adc_avg * 3.3f) / 4095.0f;
     //   voltage = ((adc_buffer[0]) * 3.3f) / 4095.0f;
@@ -292,10 +292,10 @@ int main(void)
 
 
     if(line_completed){
-      // 处理半行扫描完成的情况，例如更新 DAC 输出以准备下一行扫描
+      // 处理半行扫描完成的情况，例如更新 DAC 输出以准备下�??行扫�??
       if(scan_direction_upward){
-        // 如果当前扫描方向是向上（从最大到0），则更新 DAC 输出为下一行的值
-        if(current_scan_line > 0)  // 如果不是第一行，预先计算上一行的Y DAC值
+        // 如果当前扫描方向是向上（从最大到0），则更�?? DAC 输出为下�??行的�??
+        if(current_scan_line > 0)  // 如果不是第一行，预先计算上一行的Y DAC�??
         {
           uint16_t i;
           for(i=0;i<YPOINTS_PER_LINE;i++)
@@ -305,7 +305,7 @@ int main(void)
         }
         else
         {
-          // 如果是第一行，预先计算第二行的Y DAC值（往复循环扫描）
+          // 如果是第�??行，预先计算第二行的Y DAC值（�??复循环扫描）
           uint16_t i;
           for(i=0;i<YPOINTS_PER_LINE;i++)
           {
@@ -315,8 +315,8 @@ int main(void)
         
       }
       else{
-        // 如果当前扫描方向是向下（从0到最大），则更新 DAC 输出为下一行的值
-        if(current_scan_line < (scan_lines - 1))  // 如果不是最后一行，预先计算下一行的Y DAC值
+        // 如果当前扫描方向是向下（�??0到最大），则更新 DAC 输出为下�??行的�??
+        if(current_scan_line < (scan_lines - 1))  // 如果不是�??后一行，预先计算下一行的Y DAC�??
         {
           uint16_t i;
           for(i=0;i<YPOINTS_PER_LINE;i++)
@@ -326,7 +326,7 @@ int main(void)
         }
         else
         {
-            // 如果是最后一行，预先计算倒数第二行的Y DAC值（往复循环扫描）
+            // 如果是最后一行，预先计算倒数第二行的Y DAC值（�??复循环扫描）
             uint16_t i;
             for(i=0;i<YPOINTS_PER_LINE;i++)
             {
@@ -340,21 +340,21 @@ int main(void)
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_SET); // 点亮 LED
       printf("line %d completed\n", current_scan_line);
 
-      // 更新扫描行索引
+      // 更新扫描行索�??
       if(scan_direction_upward){
-        // 如果当前扫描方向是向上（从最大到0），则索引递减  
+        // 如果当前扫描方向是向上（从最大到0），则索引�?�减  
         if(current_scan_line > 0) current_scan_line--;
         else{
-          // 已经扫描到最上面一行，切换扫描方向
+          // 已经扫描到最上面�??行，切换扫描方向
           scan_direction_upward = false;
         }
 
       }
       else{
-        // 如果当前扫描方向是向下（从0到最大），则索引递增
+        // 如果当前扫描方向是向下（�??0到最大），则索引递增
         if(current_scan_line < (scan_lines - 1)) current_scan_line++;
         else{
-          // 已经扫描到最下面一行，切换扫描方向
+          // 已经扫描到最下面�??行，切换扫描方向
           scan_direction_upward = true;
         }
       }
@@ -362,7 +362,7 @@ int main(void)
 
     if(half_line_completed)
     {
-      // 处理半行扫描完成的情况，例如更新 DAC 输出以准备半行扫描
+      // 处理半行扫描完成的情况，例如更新 DAC 输出以准备半行扫�??
       // ...
       half_line_completed = false; // 重置标志
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET); // 熄灭 LED
@@ -833,19 +833,35 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PD1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PD0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SPI5_CS_Pin */
+  GPIO_InitStruct.Pin = SPI5_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(SPI5_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PF5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
@@ -858,6 +874,9 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
@@ -866,8 +885,8 @@ static void MX_GPIO_Init(void)
 
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc)
 {
-  // 半传输完成回调：切换到另�??????个缓冲区
-  dma_transfer_half_complete_flag = 1; // 设置半传输完成标�??????
+  // 半传输完成回调：切换到另�????????个缓冲区
+  dma_transfer_half_complete_flag = 1; // 设置半传输完成标�????????
 
 }
 
@@ -898,7 +917,7 @@ void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
   if(scan_x_tr == false){
     half_line_completed = true;
 
-    // 如果当前是扫描方向（trace），则下一次更新为回扫方向（retrace）的DAC值
+    // 如果当前是扫描方向（trace），则下�??次更新为回扫方向（retrace）的DAC�??
     scan_x_tr = true;
     HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_r, XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
   }
@@ -926,8 +945,46 @@ void HAL_DACEx_ConvCpltCallbackCh2(DAC_HandleTypeDef *hdac)
 
 }
 
+
+
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if(GPIO_Pin == GPIO_PIN_1){
+    // 处理GPIO_PIN_1的中断事�?
+    // ...
+    //printf("GPIO_PIN_1 interrupt triggered\n");
+
+    if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_1) == GPIO_PIN_SET){
+      // PD1上升沿触�?
+      scanning = true;
+      printf("Scanning started\n");
+      Scan_Init(); // 初始化扫描参数
+      Launch_Scan(); // 启动扫描  
+    }
+    else{
+      // PD1下降沿触�?
+      scanning = false;
+      printf("Scanning stopped\n");
+      Stop_Scan(); // 停止扫描
+    }
+  }
+  else if(GPIO_Pin == GPIO_PIN_0){
+    // 处理GPIO_PIN_0的中断事�?
+    // ...
+    //printf("GPIO_PIN_0 interrupt triggered\n");
+  }
+}
+
 void Scan_Init(void){
   uint16_t i;
+
+  current_scan_line = 0;
+
+  line_completed = false;
+  half_line_completed = false;
+  scan_x_tr = false;
+
 
   scan_x_inc = (float)scan_x_size * DAC_X_MSB / MAX_XSIZE / XPOINTS_PER_LINE; // X增量
   scan_y_inc = (float)scan_y_size * DAC_Y_MSB / MAX_YSIZE / (YPOINTS_PER_LINE * scan_lines); // Y增量
@@ -941,10 +998,31 @@ void Scan_Init(void){
   // fill buffer of first line of Y scanning, the rest will be updated in the DAC callback
   for(i=0; i<YPOINTS_PER_LINE; i++){
     y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + i * scan_y_inc);
-    // if(current_scan_line < scan_lines - 1)  // 如果不是最后一行，预先计算下一行的Y DAC值
+    // if(current_scan_line < scan_lines - 1)  // 如果不是�??后一行，预先计算下一行的Y DAC�??
     //   y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
   }
 
+}
+
+
+void Launch_Scan(void){
+  // 启动扫描的函数，可以在这里执行任何必要的初始化或状态设置
+  // 例如，重置扫描行索引，设置扫描标志等
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_t , XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+  /* Start line sampling right after DAC is started */
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_BUFFER_SIZE);
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer ,  YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+  // 可以在这里添加其他需要在扫描开始时执行的操作
+}
+
+
+void Stop_Scan(void){
+  // 停止扫描的函数，可以在这里执行任何必要的清理或状态重置
+  // 例如，停止DMA传输，重置扫描标志等
+  HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_1);
+  HAL_ADC_Stop_DMA(&hadc1);
+  HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_2);
+  // 可以在这里添加其他需要在扫描停止时执行的操作
 }
 /* USER CODE END 4 */
 
