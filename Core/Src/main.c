@@ -97,8 +97,8 @@ static float scan_y_inc = 0.0f;
 uint16_t scan_y_index = 0; // 当前扫描行的索引
 ALIGN_32BYTES (uint16_t x_dac_buffer_t[XPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
 ALIGN_32BYTES (uint16_t x_dac_buffer_r[XPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
-// ALIGN_32BYTES (uint16_t y_dac_buffer[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
-// ALIGN_32BYTES (uint16_t y_dac_buffer_nl[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));  // nl: next line
+ALIGN_32BYTES (uint16_t y_dac_buffer[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
+//ALIGN_32BYTES (uint16_t y_dac_buffer_nl[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));  // nl: next line
 
 
 /* USER CODE END PV */
@@ -203,8 +203,14 @@ int main(void)
     Error_Handler();
   }
 
-    /* Start TIM2 to trigger DAC1 conversions */
+    /* Start TIM2 to trigger DAC1 CH1 conversions */
   if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* Start TIM4 to trigger DAC1 CH2 conversions */
+  if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK)
   {
     Error_Handler();
   }
@@ -218,7 +224,8 @@ int main(void)
   /* Initialize scanning parameters */
   Scan_Init();
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_t , XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
-  
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer , YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+
   /* Debug: Send startup message */
   printf("STM32H730 AFM Scan Control Started\r\n");
 
@@ -885,9 +892,10 @@ void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
   
 }
 
-void HAL_DAC_ConvCpltCallbackCh2(DAC_HandleTypeDef *hdac)
+void HAL_DACEx_ConvCpltCallbackCh2(DAC_HandleTypeDef *hdac)
 {
-  //HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer_nl , YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+    HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer , YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+
 
 
 }
@@ -905,11 +913,11 @@ void Scan_Init(void){
 
 
   // fill buffer of first line of Y scanning, the rest will be updated in the DAC callback
-  // for(i=0; i<YPOINTS_PER_LINE; i++){
-  //   y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + i * scan_y_inc);
-  //   if(current_scan_line < scan_lines - 1)  // 如果不是最后一行，预先计算下一行的Y DAC值
-  //     y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
-  // }
+  for(i=0; i<YPOINTS_PER_LINE; i++){
+    y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + i * scan_y_inc);
+    // if(current_scan_line < scan_lines - 1)  // 如果不是最后一行，预先计算下一行的Y DAC值
+    //   y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
+  }
 
 }
 /* USER CODE END 4 */
