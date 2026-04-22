@@ -87,6 +87,7 @@ static bool scan_direction_upward = false; // true: upward (from max to 0), fals
 static uint16_t current_scan_line = 0;
 static bool frame_completed = false;
 static bool half_line_completed = false;
+static bool line_completed = false;
 
 static bool scan_x_tr = false; // true: x scanning in retrace direction, false: x scanning in trace direction
 
@@ -215,16 +216,16 @@ int main(void)
     Error_Handler();
   }
 
-    /* Start ADC1 with DMA first (to enable ADC) */
-  if (HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_BUFFER_SIZE) != HAL_OK)
-  {
-    Error_Handler();
-  }
+
+
   
   /* Initialize scanning parameters */
   Scan_Init();
   HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_t , XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
-  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer , YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+  /* Start line sampling right after DAC is started */
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, ADC_BUFFER_SIZE);
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_2, (uint32_t*)y_dac_buffer ,  YPOINTS_PER_LINE, DAC_ALIGN_12B_R);
+
 
   /* Debug: Send startup message */
   printf("STM32H730 AFM Scan Control Started\r\n");
@@ -241,101 +242,138 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if(dma_transfer_complete_flag==1)
-    {
-      // 处理 buffer1 数据
-      // ...
+    // if(dma_transfer_complete_flag==1)
+    // {
+    //   // 处理 buffer1 数据
+    //   // ...
 
-      uint32_t sum = 0;
-      float voltage;
+    //   uint32_t sum = 0;
+    //   float voltage;
       
-      // 计算1000个点总和
-      for(int i=0; i<1000; i++) sum += adc_buffer[i + 1000];
+    //   // 计算1000个点总和
+    //   for(int i=0; i<1000; i++) sum += adc_buffer[i + 1000];
 
       
-      // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
-      uint16_t adc_avg = sum / 1000;
-      //voltage = (adc_avg * 3.3f) / 4095.0f;
-      voltage = ((adc_buffer[1000]) * 3.3f) / 4095.0f;
+    //   // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
+    //   uint16_t adc_avg = sum / 1000;
+    //   //voltage = (adc_avg * 3.3f) / 4095.0f;
+    //   voltage = ((adc_buffer[1000]) * 3.3f) / 4095.0f;
       
-      // 通过 USART3 打印平均电压
-      printf("retrace volt: %.3f V\r\n", voltage);
+    //   // 通过 USART3 打印平均电压
+    //   printf("retrace volt: %.3f V\r\n", voltage);
 
-      printf("full transfer complete, processing buffer1...\n");
-      dma_transfer_complete_flag = 0; // 重置标志
+    //   printf("full transfer complete, processing buffer1...\n");
+    //   dma_transfer_complete_flag = 0; // 重置标志
+    //   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_SET); // 点亮 LED
+    // }
+
+    // if(dma_transfer_half_complete_flag==1)
+    // {
+    //   // 处理 buffer2 数据
+    //   // ...
+    //   uint32_t sum = 0;
+    //   float voltage;
+      
+    //   // 计算1000个点总和
+    //   for(int i=0; i<1000; i++) sum += adc_buffer[i];
+
+      
+    //   // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
+    //   uint16_t adc_avg = sum / 1000;
+    //   //voltage = (adc_avg * 3.3f) / 4095.0f;
+    //   voltage = ((adc_buffer[0]) * 3.3f) / 4095.0f;
+      
+    //   // 通过 USART3 打印平均电压
+    //   printf("trace volt: %.3f V\r\n", voltage);
+    //   printf("half transfer complete, processing buffer2...\n");
+    //   dma_transfer_half_complete_flag = 0; // 重置标志
+    //   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET); // 熄灭 LED
+    // }
+
+
+    if(line_completed){
+      // 处理半行扫描完成的情况，例如更新 DAC 输出以准备下一行扫描
+      if(scan_direction_upward){
+        // 如果当前扫描方向是向上（从最大到0），则更新 DAC 输出为下一行的值
+        if(current_scan_line > 0)  // 如果不是第一行，预先计算上一行的Y DAC值
+        {
+          uint16_t i;
+          for(i=0;i<YPOINTS_PER_LINE;i++)
+          {
+            y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line - 1) + i) * scan_y_inc);
+          }
+        }
+        else
+        {
+          // 如果是第一行，预先计算第二行的Y DAC值（往复循环扫描）
+          uint16_t i;
+          for(i=0;i<YPOINTS_PER_LINE;i++)
+          {
+            y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
+          }
+        }
+        
+      }
+      else{
+        // 如果当前扫描方向是向下（从0到最大），则更新 DAC 输出为下一行的值
+        if(current_scan_line < (scan_lines - 1))  // 如果不是最后一行，预先计算下一行的Y DAC值
+        {
+          uint16_t i;
+          for(i=0;i<YPOINTS_PER_LINE;i++)
+          {
+            y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
+          }
+        }
+        else
+        {
+            // 如果是最后一行，预先计算倒数第二行的Y DAC值（往复循环扫描）
+            uint16_t i;
+            for(i=0;i<YPOINTS_PER_LINE;i++)
+            {
+              y_dac_buffer[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 0) + i) * scan_y_inc);
+            }
+        }
+        
+        
+      }
+      line_completed = false;
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_SET); // 点亮 LED
+      printf("line %d completed\n", current_scan_line);
+
+      // 更新扫描行索引
+      if(scan_direction_upward){
+        // 如果当前扫描方向是向上（从最大到0），则索引递减  
+        if(current_scan_line > 0) current_scan_line--;
+        else{
+          // 已经扫描到最上面一行，切换扫描方向
+          scan_direction_upward = false;
+        }
+
+      }
+      else{
+        // 如果当前扫描方向是向下（从0到最大），则索引递增
+        if(current_scan_line < (scan_lines - 1)) current_scan_line++;
+        else{
+          // 已经扫描到最下面一行，切换扫描方向
+          scan_direction_upward = true;
+        }
+      }
     }
 
-    if(dma_transfer_half_complete_flag==1)
+    if(half_line_completed)
     {
-      // 处理 buffer2 数据
+      // 处理半行扫描完成的情况，例如更新 DAC 输出以准备半行扫描
       // ...
-      uint32_t sum = 0;
-      float voltage;
-      
-      // 计算1000个点总和
-      for(int i=0; i<1000; i++) sum += adc_buffer[i];
-
-      
-      // 计算平均�??????? �??????? 转换成电压（12位ADC�???????3.3V参�?�）
-      uint16_t adc_avg = sum / 1000;
-      //voltage = (adc_avg * 3.3f) / 4095.0f;
-      voltage = ((adc_buffer[0]) * 3.3f) / 4095.0f;
-      
-      // 通过 USART3 打印平均电压
-      printf("trace volt: %.3f V\r\n", voltage);
-      printf("half transfer complete, processing buffer2...\n");
-      dma_transfer_half_complete_flag = 0; // 重置标志
+      half_line_completed = false; // 重置标志
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET); // 熄灭 LED
+      //printf("half line %d completed\n", current_scan_line);
     }
 
 
-    // if(half_line_completed){
-    //   // 处理半行扫描完成的情况，例如更新 DAC 输出以准备下一行扫描
-    //   if(scan_direction_upward){
-    //     // 如果当前扫描方向是向上（从最大到0），则更新 DAC 输出为下一行的值
-    //     if(current_scan_line > 0)  // 如果不是第一行，预先计算上一行的Y DAC值
-    //     {
-    //       uint16_t i;
-    //       for(i=0;i<YPOINTS_PER_LINE;i++)
-    //       {
-    //         y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line - 1) + i) * scan_y_inc);
-    //       }
-    //     }
-    //     else
-    //     {
-    //       // 如果是第一行，预先计算第二行的Y DAC值（往复循环扫描）
-    //       uint16_t i;
-    //       for(i=0;i<YPOINTS_PER_LINE;i++)
-    //       {
-    //         y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
-    //       }
-    //     }
-        
-    //   }
-    //   else{
-    //     // 如果当前扫描方向是向下（从0到最大），则更新 DAC 输出为下一行的值
-    //     if(current_scan_line < (scan_lines - 1))  // 如果不是最后一行，预先计算下一行的Y DAC值
-    //     {
-    //       uint16_t i;
-    //       for(i=0;i<YPOINTS_PER_LINE;i++)
-    //       {
-    //         y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 1) + i) * scan_y_inc);
-    //       }
-    //     }
-    //     else
-    //     {
-    //         // 如果是最后一行，预先计算倒数第二行的Y DAC值（往复循环扫描）
-    //         uint16_t i;
-    //         for(i=0;i<YPOINTS_PER_LINE;i++)
-    //         {
-    //           y_dac_buffer_nl[i] = (uint16_t)(scan_y_offset * DAC_Y_MSB / MAX_YSIZE + (YPOINTS_PER_LINE * (current_scan_line + 0) + i) * scan_y_inc);
-    //         }
-    //     }
-        
-        
-    //   }
-    //   half_line_completed = false;
+    // if(line_completed){
+    //   // 处理整行扫描完成
+    //   printf("line %d completed\n", current_scan_line);
+    //   line_completed = false;
     // }
     /* ADC conversions are handled by TIM3 trigger and DMA interrupt */
     /* No need for polling in main loop */
@@ -443,7 +481,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;
   hadc1.Init.OversamplingMode = ENABLE;
   hadc1.Init.Oversampling.Ratio = 16;
-  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_5;
+  hadc1.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_4;
   hadc1.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;
   hadc1.Init.Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -843,13 +881,13 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
   
   
 
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, 2000);
+  
 
 
 }
 
 
-
+/* line scanning dac buffer filling*/
 void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
 {
   // DAC1通道1转换完成回调
@@ -858,33 +896,21 @@ void HAL_DAC_ConvCpltCallbackCh1(DAC_HandleTypeDef *hdac)
   // 注意：确保更新�?�度与扫描�?�率匹配，避免过快或过慢
 
   if(scan_x_tr == false){
+    half_line_completed = true;
+
     // 如果当前是扫描方向（trace），则下一次更新为回扫方向（retrace）的DAC值
     scan_x_tr = true;
     HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_r, XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
-    half_line_completed = true;
   }
   else{
+    line_completed = true;
+
     // retrace finished, prepare for next trace
     scan_x_tr = false;
     HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)x_dac_buffer_t , XPOINTS_PER_LINE, DAC_ALIGN_12B_R);
-    // 更新扫描行索引
-    if(scan_direction_upward){
-      // 如果当前扫描方向是向上（从最大到0），则索引递减
-      if(current_scan_line > 0) current_scan_line--;
-      else{
-        // 已经扫描到最上面一行，切换扫描方向
-        scan_direction_upward = false;
-      }
-
-    }
-    else{
-      // 如果当前扫描方向是向下（从0到最大），则索引递增
-      if(current_scan_line < (scan_lines - 1)) current_scan_line++;
-      else{
-        // 已经扫描到最下面一行，切换扫描方向
-        scan_direction_upward = true;
-      }
-    }
+    // start trace sampling for the next line
+    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, 2000);
+    
 
   }
   
