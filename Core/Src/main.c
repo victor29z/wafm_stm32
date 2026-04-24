@@ -101,6 +101,27 @@ ALIGN_32BYTES (uint16_t x_dac_buffer_r[XPOINTS_PER_LINE]) __attribute__((section
 ALIGN_32BYTES (uint16_t y_dac_buffer[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));
 //ALIGN_32BYTES (uint16_t y_dac_buffer_nl[YPOINTS_PER_LINE]) __attribute__((section(".ARM.__at_0x38000000")));  // nl: next line
 
+#pragma pack(push, 1) 
+typedef struct {
+    uint16_t    address;
+    uint16_t    scan_x_size;
+    uint16_t    scan_y_size;
+    uint16_t    scan_x_offset;
+    uint16_t    scan_y_offset;
+    uint16_t    scan_rate;
+    uint16_t    scan_samples;
+    uint16_t    scan_lines;
+    uint8_t     is_scanning; // 0 for stopped, 1 for scanning
+    uint8_t     scan_direction; // 0 for downward, 1 for upward
+} ScanParams_t;
+#pragma pack(pop) 
+
+union{
+    ScanParams_t params;
+    uint8_t bytes[sizeof(ScanParams_t)];
+} scan_params_union;  
+
+
 
 /* USER CODE END PV */
 
@@ -995,7 +1016,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     
     //printf("spi trans pending\n");
     HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_RESET);
-    HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)spi_rx_buffer, 14, HAL_MAX_DELAY);
+    HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)scan_params_union.bytes, sizeof(ScanParams_t), HAL_MAX_DELAY);
     HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_SET);
 
     printf("spi params updated!\n");
