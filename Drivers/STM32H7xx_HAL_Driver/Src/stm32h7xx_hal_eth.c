@@ -83,6 +83,7 @@
           (##) HAL_ETH_PTP_GetTime(): Get Seconds and Nanoseconds for the Ethernet PTP registers
           (##) HAL_ETH_PTP_SetTime(): Set Seconds and Nanoseconds for the Ethernet PTP registers
           (##) HAL_ETH_PTP_AddTimeOffset(): Add Seconds and Nanoseconds offset for the Ethernet PTP registers
+          (##) HAL_ETH_PTP_AddendUpdate(): Update the Addend register
           (##) HAL_ETH_PTP_InsertTxTimestamp(): Insert Timestamp in transmission
           (##) HAL_ETH_PTP_GetTxTimestamp(): Get transmission timestamp
           (##) HAL_ETH_PTP_GetRxTimestamp(): Get reception timestamp
@@ -262,6 +263,11 @@ static void ETH_UpdateDescriptor(ETH_HandleTypeDef *heth);
 #if (USE_HAL_ETH_REGISTER_CALLBACKS == 1)
 static void ETH_InitCallbacksToDefault(ETH_HandleTypeDef *heth);
 #endif /* USE_HAL_ETH_REGISTER_CALLBACKS */
+
+#ifdef HAL_ETH_USE_PTP
+static HAL_StatusTypeDef HAL_ETH_PTP_AddendUpdate(ETH_HandleTypeDef *heth, int32_t timeoffset);
+#endif /* HAL_ETH_USE_PTP */
+
 /**
   * @}
   */
@@ -1040,6 +1046,8 @@ HAL_StatusTypeDef HAL_ETH_Transmit_IT(ETH_HandleTypeDef *heth, ETH_TxPacketConfi
 HAL_StatusTypeDef HAL_ETH_ReadData(ETH_HandleTypeDef *heth, void **pAppBuff)
 {
   uint32_t descidx;
+  uint32_t descidx_next;
+  ETH_DMADescTypeDef *dmarxdesc_next;
   ETH_DMADescTypeDef *dmarxdesc;
   uint32_t desccnt = 0U;
   uint32_t desccntmax;
@@ -1065,14 +1073,8 @@ HAL_StatusTypeDef HAL_ETH_ReadData(ETH_HandleTypeDef *heth, void **pAppBuff)
   while ((READ_BIT(dmarxdesc->DESC3, ETH_DMARXNDESCWBF_OWN) == (uint32_t)RESET) && (desccnt < desccntmax)
          && (rxdataready == 0U))
   {
-    if (READ_BIT(dmarxdesc->DESC3,  ETH_DMARXNDESCWBF_CTXT)  != (uint32_t)RESET)
-    {
-      /* Get timestamp high */
-      heth->RxDescList.TimeStamp.TimeStampHigh = dmarxdesc->DESC1;
-      /* Get timestamp low */
-      heth->RxDescList.TimeStamp.TimeStampLow  = dmarxdesc->DESC0;
-    }
-    if ((READ_BIT(dmarxdesc->DESC3, ETH_DMARXNDESCWBF_FD) != (uint32_t)RESET) || (heth->RxDescList.pRxStart != NULL))
+    if ((READ_BIT(dmarxdesc->DESC3, ETH_DMARXNDESCWBF_FD) != (uint32_t)RESET) ||
+        (heth->RxDescList.pRxStart != NULL))
     {
       /* Check if first descriptor */
       if (READ_BIT(dmarxdesc->DESC3, ETH_DMARXNDESCWBF_FD) != (uint32_t)RESET)
@@ -1081,7 +1083,7 @@ HAL_StatusTypeDef HAL_ETH_ReadData(ETH_HandleTypeDef *heth, void **pAppBuff)
         heth->RxDescList.RxDataLength = 0;
       }
 
-      /* Get the Frame Length of the received packet: substruct 4 bytes of the CRC */
+      /* Get the Frame Length of the received packet */
       bufflength = READ_BIT(dmarxdesc->DESC3, ETH_DMARXNDESCWBF_PL) - heth->RxDescList.RxDataLength;
 
       /* Check if last descriptor */
@@ -1092,6 +1094,22 @@ HAL_StatusTypeDef HAL_ETH_ReadData(ETH_HandleTypeDef *heth, void **pAppBuff)
 
         /* Packet ready */
         rxdataready = 1;
+
+        if (READ_BIT(dmarxdesc->DESC1, ETH_DMARXNDESCWBF_TSA) != (uint32_t)RESET)
+        {
+          descidx_next = descidx;
+          INCR_RX_DESC_INDEX(descidx_next, 1U);
+
+          dmarxdesc_next = (ETH_DMADescTypeDef *)heth->RxDescList.RxDesc[descidx_next];
+
+          if (READ_BIT(dmarxdesc_next->DESC3, ETH_DMARXNDESCWBF_CTXT) != (uint32_t)RESET)
+          {
+            /* Get timestamp high */
+            heth->RxDescList.TimeStamp.TimeStampHigh = dmarxdesc_next->DESC1;
+            /* Get timestamp low */
+            heth->RxDescList.TimeStamp.TimeStampLow  = dmarxdesc_next->DESC0;
+          }
+        }
       }
 
       /* Link data */
@@ -1185,6 +1203,11 @@ static void ETH_UpdateDescriptor(ETH_HandleTypeDef *heth)
         WRITE_REG(dmarxdesc->DESC0, (uint32_t)buff);
       }
     }
+    else
+    {
+      /* Descriptor was used as a context descriptor, buffer still unused */
+      WRITE_REG(dmarxdesc->DESC0, (uint32_t)dmarxdesc->BackupAddr0);
+    }
 
     if (allocStatus != 0U)
     {
@@ -1209,7 +1232,7 @@ static void ETH_UpdateDescriptor(ETH_HandleTypeDef *heth)
   if (heth->RxDescList.RxBuildDescCnt != desccount)
   {
     /* Set the tail pointer index */
-    tailidx = (descidx + 1U) % ETH_RX_DESC_CNT;
+    tailidx = (ETH_RX_DESC_CNT + descidx - 1U) % ETH_RX_DESC_CNT;
 
     /* DMB instruction to avoid race condition */
     __DMB();
@@ -1429,7 +1452,7 @@ HAL_StatusTypeDef HAL_ETH_ReleaseTxPacket(ETH_HandleTypeDef *heth)
 #ifdef HAL_ETH_USE_PTP
 
         /* Disable Ptp transmission */
-        CLEAR_BIT(heth->Init.TxDesc[idx].DESC3, (0x40000000U));
+        CLEAR_BIT(heth->Init.TxDesc[idx].DESC2, ETH_DMATXNDESCRF_TTSE);
 
         if ((heth->Init.TxDesc[idx].DESC3 & ETH_DMATXNDESCWBF_LD)
             && (heth->Init.TxDesc[idx].DESC3 & ETH_DMATXNDESCWBF_TTSS))
@@ -1506,6 +1529,9 @@ HAL_StatusTypeDef HAL_ETH_PTP_SetConfig(ETH_HandleTypeDef *heth, ETH_PTP_ConfigT
     return HAL_ERROR;
   }
 
+  /* Mask the Timestamp Trigger interrupt */
+  CLEAR_BIT(heth->Instance->MACIER, ETH_MACIER_TSIE);
+
   tmpTSCR = ptpconfig->Timestamp |
             ((uint32_t)ptpconfig->TimestampUpdate << ETH_MACTSCR_TSUPDT_Pos) |
             ((uint32_t)ptpconfig->TimestampAll << ETH_MACTSCR_TSENALL_Pos) |
@@ -1518,7 +1544,6 @@ HAL_StatusTypeDef HAL_ETH_PTP_SetConfig(ETH_HandleTypeDef *heth, ETH_PTP_ConfigT
             ((uint32_t)ptpconfig->TimestampMaster << ETH_MACTSCR_TSMSTRENA_Pos) |
             ((uint32_t)ptpconfig->TimestampSnapshots << ETH_MACTSCR_SNAPTYPSEL_Pos) |
             ((uint32_t)ptpconfig->TimestampFilter << ETH_MACTSCR_TSENMACADDR_Pos) |
-            ((uint32_t)ptpconfig->TimestampChecksumCorrection << ETH_MACTSCR_CSC_Pos) |
             ((uint32_t)ptpconfig->TimestampStatusMode << ETH_MACTSCR_TXTSSTSM_Pos);
 
   /* Write to MACTSCR */
@@ -1539,8 +1564,11 @@ HAL_StatusTypeDef HAL_ETH_PTP_SetConfig(ETH_HandleTypeDef *heth, ETH_PTP_ConfigT
     }
   }
 
-  /* Ptp Init */
-  SET_BIT(heth->Instance->MACTSCR, ETH_MACTSCR_TSINIT);
+  /* Enable Update mode */
+  if (ptpconfig->TimestampUpdateMode == ENABLE)
+  {
+    SET_BIT(heth->Instance->MACTSCR, ETH_MACTSCR_TSCFUPDT);
+  }
 
   /* Set PTP Configuration done */
   heth->IsPtpConfigured = HAL_ETH_PTP_CONFIGURED;
@@ -1551,6 +1579,9 @@ HAL_StatusTypeDef HAL_ETH_PTP_SetConfig(ETH_HandleTypeDef *heth, ETH_PTP_ConfigT
   time.NanoSeconds = heth->Instance->MACSTNR;
 
   HAL_ETH_PTP_SetTime(heth, &time);
+
+  /* Ptp Init */
+  SET_BIT(heth->Instance->MACTSCR, ETH_MACTSCR_TSINIT);
 
   /* Return function status */
   return HAL_OK;
@@ -1675,6 +1706,7 @@ HAL_StatusTypeDef HAL_ETH_PTP_GetTime(ETH_HandleTypeDef *heth, ETH_TimeTypeDef *
 HAL_StatusTypeDef HAL_ETH_PTP_AddTimeOffset(ETH_HandleTypeDef *heth, ETH_PtpUpdateTypeDef ptpoffsettype,
                                             ETH_TimeTypeDef *timeoffset)
 {
+  int32_t addendtime ;
   if (heth->IsPtpConfigured == HAL_ETH_PTP_CONFIGURED)
   {
     if (ptpoffsettype ==  HAL_ETH_PTP_NEGATIVE_UPDATE)
@@ -1692,6 +1724,11 @@ HAL_StatusTypeDef HAL_ETH_PTP_AddTimeOffset(ETH_HandleTypeDef *heth, ETH_PtpUpda
         /* Set nanoSeconds update */
         heth->Instance->MACSTNUR = ETH_MACSTSUR_VALUE - timeoffset->NanoSeconds + 1U;
       }
+
+      /* adjust negative addend register */
+      addendtime = - timeoffset->NanoSeconds;
+      HAL_ETH_PTP_AddendUpdate(heth, addendtime);
+
     }
     else
     {
@@ -1699,6 +1736,11 @@ HAL_StatusTypeDef HAL_ETH_PTP_AddTimeOffset(ETH_HandleTypeDef *heth, ETH_PtpUpda
       heth->Instance->MACSTSUR = timeoffset->Seconds;
       /* Set nanoSeconds update */
       heth->Instance->MACSTNUR = timeoffset->NanoSeconds;
+
+      /* adjust positive addend register */
+      addendtime = timeoffset->NanoSeconds;
+      HAL_ETH_PTP_AddendUpdate(heth, addendtime);
+
     }
 
     SET_BIT(heth->Instance->MACTSCR, ETH_MACTSCR_TSUPDT);
@@ -1713,6 +1755,40 @@ HAL_StatusTypeDef HAL_ETH_PTP_AddTimeOffset(ETH_HandleTypeDef *heth, ETH_PtpUpda
   }
 }
 
+/**
+  * @brief  Update the Addend register
+  * @param  heth: Pointer to a ETH_HandleTypeDef structure that contains
+  *         the configuration information for ETHERNET module
+  * @param  timeoffset: The value of the time offset to be added to
+  *         the addend register in Nanoseconds
+  * @retval HAL status
+  */
+static HAL_StatusTypeDef HAL_ETH_PTP_AddendUpdate(ETH_HandleTypeDef *heth, int32_t timeoffset)
+{
+  uint32_t tmpreg;
+  if (heth->IsPtpConfigured == HAL_ETH_PTP_CONFIGURED)
+  {
+    /* update the addend register */
+
+    tmpreg = READ_REG(heth->Instance->MACTSAR);
+    tmpreg += timeoffset ;
+    WRITE_REG(heth->Instance->MACTSAR, tmpreg);
+
+    SET_BIT(heth->Instance->MACTSCR, ETH_MACTSCR_TSADDREG);
+    while ((heth->Instance->MACTSCR & ETH_MACTSCR_TSADDREG) != 0)
+    {
+
+    }
+
+    /* Return function status */
+    return HAL_OK;
+  }
+  else
+  {
+    /* Return function status */
+    return HAL_ERROR;
+  }
+}
 /**
   * @brief  Insert Timestamp in transmission.
   * @param  heth: pointer to a ETH_HandleTypeDef structure that contains
@@ -2491,7 +2567,7 @@ HAL_StatusTypeDef HAL_ETH_SetMACFilterConfig(ETH_HandleTypeDef *heth, const ETH_
                   ((uint32_t)pFilterConfig->HashMulticast << 2)  |
                   ((uint32_t)pFilterConfig->DestAddrInverseFiltering << 3) |
                   ((uint32_t)pFilterConfig->PassAllMulticast << 4) |
-                  ((uint32_t)((pFilterConfig->BroadcastFilter == DISABLE) ? 1U : 0U) << 5) |
+                  ((uint32_t)((pFilterConfig->BroadcastFilter == ENABLE) ? 1U : 0U) << 5) |
                   ((uint32_t)pFilterConfig->SrcAddrInverseFiltering << 8) |
                   ((uint32_t)pFilterConfig->SrcAddrFiltering << 9) |
                   ((uint32_t)pFilterConfig->HachOrPerfectFilter << 10) |
@@ -2524,7 +2600,7 @@ HAL_StatusTypeDef HAL_ETH_GetMACFilterConfig(const ETH_HandleTypeDef *heth, ETH_
   pFilterConfig->DestAddrInverseFiltering = ((READ_BIT(heth->Instance->MACPFR,
                                                        ETH_MACPFR_DAIF) >> 3) > 0U) ? ENABLE : DISABLE;
   pFilterConfig->PassAllMulticast = ((READ_BIT(heth->Instance->MACPFR, ETH_MACPFR_PM) >> 4) > 0U) ? ENABLE : DISABLE;
-  pFilterConfig->BroadcastFilter = ((READ_BIT(heth->Instance->MACPFR, ETH_MACPFR_DBF) >> 5) == 0U) ? ENABLE : DISABLE;
+  pFilterConfig->BroadcastFilter = ((READ_BIT(heth->Instance->MACPFR, ETH_MACPFR_DBF) >> 5) > 0U) ? ENABLE : DISABLE;
   pFilterConfig->ControlPacketsFilter = READ_BIT(heth->Instance->MACPFR, ETH_MACPFR_PCF);
   pFilterConfig->SrcAddrInverseFiltering = ((READ_BIT(heth->Instance->MACPFR,
                                                       ETH_MACPFR_SAIF) >> 8) > 0U) ? ENABLE : DISABLE;
@@ -2772,6 +2848,16 @@ uint32_t HAL_ETH_GetMACWakeUpSource(const ETH_HandleTypeDef *heth)
   return heth->MACWakeUpEvent;
 }
 
+/**
+  * @brief  Returns the ETH Tx Buffers in use number
+  * @param  heth: pointer to a ETH_HandleTypeDef structure that contains
+  *         the configuration information for ETHERNET module
+  * @retval ETH Tx Buffers in use number
+  */
+uint32_t HAL_ETH_GetTxBuffersNumber(const ETH_HandleTypeDef *heth)
+{
+  return heth->TxDescList.BuffersInUse;
+}
 /**
   * @}
   */
@@ -3056,7 +3142,7 @@ static void ETH_DMARxDescListInit(ETH_HandleTypeDef *heth)
   * @param  heth: pointer to a ETH_HandleTypeDef structure that contains
   *         the configuration information for ETHERNET module
   * @param  pTxConfig: Tx packet configuration
-  * @param  ItMode: Enable or disable Tx EOT interrept
+  * @param  ItMode: Enable or disable Tx EOT interrupt
   * @retval Status
   */
 static uint32_t ETH_Prepare_Tx_Descriptors(ETH_HandleTypeDef *heth, const ETH_TxPacketConfigTypeDef *pTxConfig,

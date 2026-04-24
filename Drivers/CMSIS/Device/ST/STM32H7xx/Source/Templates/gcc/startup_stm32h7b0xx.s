@@ -59,7 +59,9 @@ defined in linker script */
   .type  Reset_Handler, %function
 Reset_Handler:  
   ldr   sp, =_estack      /* set stack pointer */
-  
+
+/* Call the ExitRun0Mode function to configure the power supply */
+  bl  ExitRun0Mode
 /* Call the clock system initialization function.*/
   bl  SystemInit
   
@@ -96,8 +98,10 @@ LoopFillZerobss:
 /* Call static constructors */
     bl __libc_init_array
 /* Call the application's entry point.*/
-  bl  main
-  bx  lr
+    bl  main
+LoopForever:
+    b LoopForever
+
 .size  Reset_Handler, .-Reset_Handler
 
 /**
