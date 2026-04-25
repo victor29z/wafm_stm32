@@ -82,14 +82,14 @@ static uint16_t scan_y_offset = 0; // integer in nm
 static uint16_t scan_rate = 1; // in Hz
 static uint16_t scan_samples = 250;
 static uint16_t scan_lines = 250;
-static bool scanning = false;
-static bool scan_direction_upward = false; // true: upward (from max to 0), false: downward (from 0 to max)
-static uint16_t current_scan_line = 0;
-static bool frame_completed = false;
-static bool half_line_completed = false;
-static bool line_completed = false;
+volatile bool scanning = false;
+volatile static bool scan_direction_upward = false; // true: upward (from max to 0), false: downward (from 0 to max)
+volatile uint16_t current_scan_line = 0;
+volatile bool frame_completed = false;
+volatile bool half_line_completed = false;
+volatile bool line_completed = false;
 
-static bool scan_x_tr = false; // true: x scanning in retrace direction, false: x scanning in trace direction
+volatile bool scan_x_tr = false; // true: x scanning in retrace direction, false: x scanning in trace direction
 
 // scanning control varibles
 static float scan_x_inc = 0.0f; 
@@ -316,60 +316,7 @@ int main(void)
     //   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET); // 熄灭 LED
     // }
 
-    if(spi_request)
-    {
-      // 处理 SPI 请求，例如发送当前扫描参数
-      // ...
-      char spi_tx_buffer[ 128];
-      HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_RESET);
-      HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)scan_params_union.bytes, sizeof(ScanParams_t), HAL_MAX_DELAY);
-      HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_SET);
-      
-      switch(scan_params_union.params.address)
-      {
-        case 0x0001: // 扫描参数更新
-          scan_x_size = scan_params_union.params.scan_x_size;
-          scan_y_size = scan_params_union.params.scan_y_size;
-          scan_x_offset = scan_params_union.params.scan_x_offset;
-          scan_y_offset = scan_params_union.params.scan_y_offset;
-          scan_rate = scan_params_union.params.scan_rate;
-          scan_samples = scan_params_union.params.scan_samples;
-          scan_lines = scan_params_union.params.scan_lines;
-          
-          
-          break;
-        case 0x0002: // 扫描启停控制
-          scanning = (scan_params_union.params.is_scanning == 1);
-
-          if(scanning == true)
-          {
-            printf("Scanning started\n");
-            Scan_Init(); // 初始化扫描参数
-            Launch_Scan(); // 启动扫描  
-
-          }
-          else{
-            printf("Scanning stopped\n");
-            Stop_Scan(); // 停止扫描
-          }
-        break;
-
-        case 0x0003: // 方向控制
-          scan_direction_upward = (scan_params_union.params.scan_direction == 1);
-        break;
-        
-          // 可以添加更多地址对应不同的操作，例如控制扫描开始/停止、查询状态等
-        default:
-          // 未知地址，可以选择忽略或返回错误
-          break;
-      } 
-      
-      spi_request = false; // 重置标志
-
-
-    }
-
-
+    
     if(line_completed){
       // 处理半行扫描完成的情况，例如更新 DAC 输出以准备下�??行扫�??
       if(scan_direction_upward){
@@ -1067,13 +1014,55 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     }
   }
   else if(GPIO_Pin == GPIO_PIN_0){
-    // GPIO_PIN_0 : Scan params update trigger
-    spi_request = true;
+    // GPIO_PIN_0 : spi slave request
+    //spi_request = true;
     //printf("spi trans pending\n");
+    char spi_tx_buffer[ 128];
+    HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_RESET);
+    HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)scan_params_union.bytes, sizeof(ScanParams_t), HAL_MAX_DELAY);
+    HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_SET);
+    
+    switch(scan_params_union.params.address)
+    {
+      case 0x0001: // 扫描参数更新
+        scan_x_size = scan_params_union.params.scan_x_size;
+        scan_y_size = scan_params_union.params.scan_y_size;
+        scan_x_offset = scan_params_union.params.scan_x_offset;
+        scan_y_offset = scan_params_union.params.scan_y_offset;
+        scan_rate = scan_params_union.params.scan_rate;
+        scan_samples = scan_params_union.params.scan_samples;
+        scan_lines = scan_params_union.params.scan_lines;
+        
+        
+        break;
+      case 0x0002: // 扫描启停控制
+        scanning = (scan_params_union.params.is_scanning == 1);
 
+        if(scanning == true)
+        {
+          printf("Scanning started\n");
+          Scan_Init(); // 初始化扫描参数
+          Launch_Scan(); // 启动扫描  
+
+        }
+        else{
+          printf("Scanning stopped\n");
+          Stop_Scan(); // 停止扫描
+        }
+      break;
+
+      case 0x0003: // 方向控制
+        scan_direction_upward = (scan_params_union.params.scan_direction == 1);
+      break;
+      
+        // 可以添加更多地址对应不同的操作，例如控制扫描开始/停止、查询状态等
+      default:
+        // 未知地址，可以选择忽略或返回错误
+        break;
+    } 
 
     
-    printf("spi request raised!\n");
+    
 
     //printf("GPIO_PIN_0 interrupt triggered\n");
   }
