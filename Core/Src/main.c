@@ -364,6 +364,8 @@ int main(void)
       }
       line_completed = false;
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_SET); // 点亮 LED
+      HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET); // falling edge indicates retrace data ready
+
       printf("line %d completed\n", current_scan_line);
 
       // 更新扫描行索�??
@@ -392,6 +394,7 @@ int main(void)
       // ...
       half_line_completed = false; // 重置标志
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET); // 熄灭 LED
+      HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET);   // raising edge indicates trace data ready
       //printf("half line %d completed\n", current_scan_line);
     }
 
@@ -865,7 +868,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7|GPIO_PIN_6, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_SET);
@@ -879,8 +882,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PD7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  /*Configure GPIO pins : PD7 PD6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
