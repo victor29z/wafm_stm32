@@ -377,7 +377,7 @@ int main(void)
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_SET); // 点亮 LED
       HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET); // falling edge indicates retrace data ready
 
-      printf("line %d completed\n", current_scan_line);
+      //printf("line %d completed\n", current_scan_line);
 
       // 更新扫描行索�??
       if(scan_direction_upward){
@@ -988,14 +988,20 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   if(GPIO_Pin == GPIO_PIN_1){
     // 处理GPIO_PIN_1的中断事�?
     // ...
+
+    //HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, NULL, 20, HAL_MAX_DELAY);
     // if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_6) == GPIO_PIN_SET){
-    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)adc_buffer, NULL, 2000, HAL_MAX_DELAY);
+    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, NULL, 20, HAL_MAX_DELAY);
+    //   printf("t scan %d data transmitted\n",current_scan_line);
 
     // }
     // else{
-    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)(adc_buffer+1000), NULL, 2000, HAL_MAX_DELAY);
+    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)(spi_tx_buffer+20), NULL, 20, HAL_MAX_DELAY);
+    //   printf("r scan %d data transmitted\n",current_scan_line);
       
     // }
+    HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)scan_params_union.bytes, sizeof(ScanParams_t), HAL_MAX_DELAY);
+    printf("IOD1: line %d completed\n", current_scan_line);  
     
   }
   else if(GPIO_Pin == GPIO_PIN_0){
@@ -1005,6 +1011,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     
     
     HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)scan_params_union.bytes, sizeof(ScanParams_t), HAL_MAX_DELAY);
+    
     
     
     switch(scan_params_union.params.address)
@@ -1049,8 +1056,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
       break;
       
         // 可以添加更多地址对应不同的操作，例如控制扫描开始/停止、查询状态等
+        
+      case 0x0004:
+
+        printf("line %d completed\n", current_scan_line);  
+      break;
       default:
         // 未知地址，可以选择忽略或返回错误
+
+
         break;
     } 
 
