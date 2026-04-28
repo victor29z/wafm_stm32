@@ -158,55 +158,50 @@
         <Ww>
           <count>1</count>
           <WinNumber>1</WinNumber>
-          <ItemText>adc_buffer</ItemText>
+          <ItemText>scanning</ItemText>
         </Ww>
         <Ww>
           <count>2</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scanning</ItemText>
+          <ItemText>scan_direction_upward</ItemText>
         </Ww>
         <Ww>
           <count>3</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scan_direction_upward</ItemText>
+          <ItemText>scan_x_size</ItemText>
         </Ww>
         <Ww>
           <count>4</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scan_x_size</ItemText>
+          <ItemText>scan_y_size</ItemText>
         </Ww>
         <Ww>
           <count>5</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scan_y_size</ItemText>
+          <ItemText>scan_x_offset</ItemText>
         </Ww>
         <Ww>
           <count>6</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scan_x_offset</ItemText>
+          <ItemText>scan_y_offset</ItemText>
         </Ww>
         <Ww>
           <count>7</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scan_y_offset</ItemText>
+          <ItemText>scan_rate</ItemText>
         </Ww>
         <Ww>
           <count>8</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scan_rate</ItemText>
+          <ItemText>scan_samples</ItemText>
         </Ww>
         <Ww>
           <count>9</count>
           <WinNumber>1</WinNumber>
-          <ItemText>scan_samples</ItemText>
-        </Ww>
-        <Ww>
-          <count>10</count>
-          <WinNumber>1</WinNumber>
           <ItemText>scan_lines</ItemText>
         </Ww>
         <Ww>
-          <count>11</count>
+          <count>10</count>
           <WinNumber>1</WinNumber>
           <ItemText>current_scan_line</ItemText>
         </Ww>

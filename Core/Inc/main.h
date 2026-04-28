@@ -57,8 +57,6 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define SPI5_CS_Pin GPIO_PIN_6
-#define SPI5_CS_GPIO_Port GPIOF
 
 /* USER CODE BEGIN Private defines */
 #define ADC_BUFFER_SIZE 2000

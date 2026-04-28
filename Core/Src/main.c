@@ -111,8 +111,8 @@ typedef struct {
     uint16_t    scan_rate;
     uint16_t    scan_samples;
     uint16_t    scan_lines;
-    uint8_t     is_scanning; // 0 for stopped, 1 for scanning
-    uint8_t     scan_direction; // 0 for downward, 1 for upward
+    uint16_t     is_scanning; // 0 for stopped, 1 for scanning
+    uint16_t     scan_direction; // 0 for downward, 1 for upward
 } ScanParams_t;
 #pragma pack(pop) 
 
@@ -123,7 +123,7 @@ union{
 
 
 static bool spi_request = false;
-
+char spi_tx_buffer[ 128];
 
 
 /* USER CODE END PV */
@@ -158,6 +158,17 @@ int fputc(int ch, FILE *stream)
     HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 100);
     return ch;
 }
+
+
+void tx_buf_init(void)
+{
+  uint16_t i;
+  for(i = 0; i<128;i++)
+    spi_tx_buffer[i] = i;
+
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -250,7 +261,7 @@ int main(void)
   
   /* Initialize scanning parameters */
   Scan_Init();
-
+  tx_buf_init();
 
 
   /* Debug: Send startup message */
@@ -618,8 +629,8 @@ static void MX_SPI5_Init(void)
   hspi5.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi5.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi5.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi5.Init.NSS = SPI_NSS_SOFT;
-  hspi5.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi5.Init.NSS = SPI_NSS_HARD_OUTPUT;
+  hspi5.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi5.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi5.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi5.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -871,14 +882,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7|GPIO_PIN_6, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_SET);
-
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PD1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  /*Configure GPIO pins : PD1 PD0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
@@ -888,19 +896,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PD0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : SPI5_CS_Pin */
-  GPIO_InitStruct.Pin = SPI5_CS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(SPI5_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PF5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
@@ -993,37 +988,24 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   if(GPIO_Pin == GPIO_PIN_1){
     // 处理GPIO_PIN_1的中断事�?
     // ...
-    //printf("GPIO_PIN_1 interrupt triggered\n");
+    // if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_6) == GPIO_PIN_SET){
+    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)adc_buffer, NULL, 2000, HAL_MAX_DELAY);
 
-    if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_1) == GPIO_PIN_SET){
-      // PD1上升沿触�?
-      scanning = true;
-      printf("Scanning started\n");
-      Scan_Init(); // 初始化扫描参数
-      Launch_Scan(); // 启动扫描  
+    // }
+    // else{
+    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)(adc_buffer+1000), NULL, 2000, HAL_MAX_DELAY);
       
-
-      
-      
-
-    }
-    else{
-      // PD1下降沿触�?
-      scanning = false;
-      printf("Scanning stopped\n");
-      Stop_Scan(); // 停止扫描
-      
-      
-    }
+    // }
+    
   }
   else if(GPIO_Pin == GPIO_PIN_0){
     // GPIO_PIN_0 : spi slave request
     //spi_request = true;
     //printf("spi trans pending\n");
-    char spi_tx_buffer[ 128];
-    HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_RESET);
+    
+    
     HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)scan_params_union.bytes, sizeof(ScanParams_t), HAL_MAX_DELAY);
-    HAL_GPIO_WritePin(SPI5_CS_GPIO_Port, SPI5_CS_Pin, GPIO_PIN_SET);
+    
     
     switch(scan_params_union.params.address)
     {
@@ -1035,7 +1017,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         scan_rate = scan_params_union.params.scan_rate;
         scan_samples = scan_params_union.params.scan_samples;
         scan_lines = scan_params_union.params.scan_lines;
-        
+        printf("scan params updated\n");
         
         break;
       case 0x0002: // 扫描启停控制
@@ -1056,6 +1038,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
       case 0x0003: // 方向控制
         scan_direction_upward = (scan_params_union.params.scan_direction == 1);
+
+        if(scan_direction_upward){
+          printf("scan direction upward\n");
+        }
+        else{
+
+          printf("scan direction downward\n");
+        }
       break;
       
         // 可以添加更多地址对应不同的操作，例如控制扫描开始/停止、查询状态等
