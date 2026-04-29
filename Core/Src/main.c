@@ -59,6 +59,7 @@ DMA_HandleTypeDef hdma_dac1_ch1;
 DMA_HandleTypeDef hdma_dac1_ch2;
 
 SPI_HandleTypeDef hspi5;
+DMA_HandleTypeDef hdma_spi5_tx;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
@@ -123,7 +124,7 @@ union{
 
 
 static bool spi_request = false;
-char spi_tx_buffer[ 128];
+uint16_t spi_tx_buffer[ 1000];
 
 
 /* USER CODE END PV */
@@ -163,7 +164,7 @@ int fputc(int ch, FILE *stream)
 void tx_buf_init(void)
 {
   uint16_t i;
-  for(i = 0; i<128;i++)
+  for(i = 0; i< sizeof(spi_tx_buffer);i++)
     spi_tx_buffer[i] = i;
 
 }
@@ -857,6 +858,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
+  /* DMA1_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
 
 }
 
@@ -984,6 +988,7 @@ void HAL_DACEx_ConvCpltCallbackCh2(DAC_HandleTypeDef *hdac)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+  char rxbuf[2000];
 
   if(GPIO_Pin == GPIO_PIN_1){
     // 处理GPIO_PIN_1的中断事�?
@@ -1000,8 +1005,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     //   printf("r scan %d data transmitted\n",current_scan_line);
       
     // }
-    HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, (uint8_t*)scan_params_union.bytes, sizeof(ScanParams_t), HAL_MAX_DELAY);
-    printf("IOD1: line %d completed\n", current_scan_line);  
+
+    SCB_CleanDCache_by_Addr((uint32_t*)spi_tx_buffer, 2000);
+
+    HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)spi_tx_buffer, 2000);
+    printf("IOD1: line %d completed, %d bytes transfered\n", current_scan_line, 2000);  
     
   }
   else if(GPIO_Pin == GPIO_PIN_0){
