@@ -994,21 +994,17 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     // 处理GPIO_PIN_1的中断事�?
     // ...
 
-    //HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, NULL, 20, HAL_MAX_DELAY);
-    // if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_6) == GPIO_PIN_SET){
-    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)spi_tx_buffer, NULL, 20, HAL_MAX_DELAY);
-    //   printf("t scan %d data transmitted\n",current_scan_line);
+    
+    if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_6) ==  GPIO_PIN_SET){
+      SCB_CleanDCache_by_Addr((uint32_t*)adc_buffer, 2000);
+      HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)adc_buffer, 2000);
 
-    // }
-    // else{
-    //   HAL_SPI_TransmitReceive(&hspi5, (uint8_t*)(spi_tx_buffer+20), NULL, 20, HAL_MAX_DELAY);
-    //   printf("r scan %d data transmitted\n",current_scan_line);
-      
-    // }
-
-    SCB_CleanDCache_by_Addr((uint32_t*)spi_tx_buffer, 2000);
-
-    HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)spi_tx_buffer, 2000);
+    }
+    else{
+      SCB_CleanDCache_by_Addr((uint32_t*)(adc_buffer+1000), 2000);
+      HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)(adc_buffer+1000), 2000);
+    }
+    
     printf("IOD1: line %d completed, %d bytes transfered\n", current_scan_line, 2000);  
     
   }
