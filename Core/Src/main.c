@@ -164,7 +164,7 @@ int fputc(int ch, FILE *stream)
 void tx_buf_init(void)
 {
   uint16_t i;
-  for(i = 0; i< sizeof(spi_tx_buffer);i++)
+  for(i = 0; i< 1000; i++)
     spi_tx_buffer[i] = i;
 
 }
@@ -998,11 +998,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_6) ==  GPIO_PIN_SET){
       SCB_CleanDCache_by_Addr((uint32_t*)adc_buffer, 2000);
       HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)adc_buffer, 2000);
+      // SCB_CleanDCache_by_Addr((uint32_t*)(spi_tx_buffer), 2000);
+      // HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)(spi_tx_buffer), 2000);
+      
 
     }
     else{
       SCB_CleanDCache_by_Addr((uint32_t*)(adc_buffer+1000), 2000);
       HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)(adc_buffer+1000), 2000);
+      // SCB_CleanDCache_by_Addr((uint32_t*)(spi_tx_buffer), 2000);
+      // HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)(spi_tx_buffer), 2000);
     }
     
     printf("IOD1: line %d completed, %d bytes transfered\n", current_scan_line, 2000);  
