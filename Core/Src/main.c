@@ -376,7 +376,7 @@ int main(void)
       }
       line_completed = false;
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_SET); // 点亮 LED
-      HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET); // falling edge indicates retrace data ready
+      HAL_GPIO_WritePin(GPIO_PORT_LINESYNC, GPIO_PIN_LINESYNC, GPIO_PIN_RESET); // falling edge indicates retrace data ready
 
       //printf("line %d completed\n", current_scan_line);
 
@@ -406,7 +406,7 @@ int main(void)
       // ...
       half_line_completed = false; // 重置标志
       HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET); // 熄灭 LED
-      HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET);   // raising edge indicates trace data ready
+      HAL_GPIO_WritePin(GPIO_PORT_LINESYNC, GPIO_PIN_LINESYNC, GPIO_PIN_SET);   // raising edge indicates trace data ready
       //printf("half line %d completed\n", current_scan_line);
     }
 
@@ -877,8 +877,9 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
 
@@ -886,13 +887,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7|GPIO_PIN_6, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PD1 PD0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_5, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : PD7 PD6 */
   GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_6;
@@ -901,12 +899,25 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PG14 */
+  GPIO_InitStruct.Pin = GPIO_PIN_14;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
   /*Configure GPIO pin : PF5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB1 PB0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
@@ -995,7 +1006,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     // ...
 
     
-    if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_6) ==  GPIO_PIN_SET){
+    if(HAL_GPIO_ReadPin(GPIO_PORT_LINESYNC, GPIO_PIN_LINESYNC) ==  GPIO_PIN_SET){
       SCB_CleanDCache_by_Addr((uint32_t*)adc_buffer, 2000);
       HAL_SPI_Transmit_DMA(&hspi5, (uint8_t*)adc_buffer, 2000);
       // SCB_CleanDCache_by_Addr((uint32_t*)(spi_tx_buffer), 2000);

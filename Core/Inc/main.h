@@ -60,6 +60,9 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 #define ADC_BUFFER_SIZE 2000
+#define GPIO_PORT_LINESYNC GPIOG
+#define GPIO_PIN_LINESYNC GPIO_PIN_14
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
